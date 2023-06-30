@@ -53,3 +53,11 @@ The game uses the following keys:
 * [DeZog](https://github.com/maziac/DeZog), Copyright &copy; Thomas Busse.
 * [Z80.js simulator](https://github.com/DrGoldfire/Z80.js) Copyright &copy; Molly Howell
 * ZX81 ROM Copyright &copy; 1981 Nine Tiles.
+
+## Licenses
+
+* **FACTORY** is licensed under GPLv3.
+* **ZX81-Debugger** is licensed under GPLv3.
+* **Z80 Assembler in Typescript Library** is licensed under GPLv3.
+* **DeZog** is licensed under the MIT license.
+* **Z80.js simulator** is licensed under the MIT license.
