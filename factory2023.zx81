@@ -1,0 +1,1277 @@
+; *******************************************************************
+; * FACTORY - A game for ZX81 computers
+; *******************************************************************
+; * File:           usine2023.zx81
+; * Description:    Main file
+; * Author:         Sebastien Andrivet
+; * License:        GPLv3
+; * Copyrights:     Copyright (C) 1984-2023 Sebastien Andrivet
+; *******************************************************************
+
+    device  ZX81
+
+    include "constants.zx81"
+
+; -------------------------------------------------------------------
+; Start of machine code program (0x4082, 16514)
+; -------------------------------------------------------------------
+start:
+    call    init                    ; initialize variables
+    call    display_background      ; display the background of the game
+    call    display_score           ; display the score
+    call    display_chances         ; display the remaining chances
+    call    display_marius          ; display Marius
+    call    display_louis           ; display Luis
+    ld      a,0                     ; Position 0
+    call    draw_box                ; Draw a box at position 0
+main_loop:
+    call    brothers_move_boxes     ; Move boxes in front of a brother
+    call    test_keyboard           ; Test the keyboard and moves
+    cp      1                       ; Quit game?
+    ret     z
+    call    brothers_move_boxes     ; Move boxes in front of a brother
+    call    step                    ; Step of the game (if times elapsed)
+    call    is_game_finished        ; Check if game is finished
+    cp      1                       ; Game finished?
+    jr      z,start                 ; Play a new one.
+    jr      main_loop               ; Loop
+
+; -------------------------------------------------------------------
+; Initialize variables
+; -------------------------------------------------------------------
+init:
+    push    af                      ; save registers
+    push    hl
+    ld      a,$00
+    ld      (max_score),a           ; max score? (0: no).
+    ld      a,INITIAL_BOXES
+    ld      (nb_boxes),a            ; nb_boxes = INITIAL_BOXES
+    ld      hl,(FRAMES)
+    ld      (last_frames),hl        ; last_frames = FRAMES
+    ld      a,0
+    ld      (marius_position),a     ; Position of Marius = 0 (bottom)
+    ld      (louis_position),a      ; Position of Louis = 0 (bottom)
+    ld      a,INITIAL_SPEED
+    ld      (speed),a               ; speed = INITIAL_SPEED
+    ld      a,SPEED_STEPS
+    ld      (speed_steps),a         ; speed_steps = SPEED_STEPS
+    ld      a,1
+    ld      (points_increment),a    ; points multiplier = 1
+    call    init_boxes              ; init position of boxes (to empty)
+    call    init_score              ; init the score
+    ld      a,INITIAL_CHANCES
+    ld      (chances),a             ; chances = INITIAL_CHANCES
+    pop     hl                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Initialize the positions of boxes (to empty)
+; -------------------------------------------------------------------
+init_boxes:
+    push    hl                      ; save registers.
+    push    bc
+    ld      hl,boxes_positions      ; HL: positions of boxes
+    ld      b,MAX_BOXES             ; B: max number of boxes
+init_boxes_loop:
+    ld      (hl),$FF                ; position of box = empty
+    inc     hl                      ; next position
+    djnz    init_boxes_loop         ; while --b != 0
+    ld      hl,boxes_positions
+    ld      (hl),0                  ; box on 1st position (0)
+    pop     bc                      ; restore registers.
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Initialize the score to 000
+; -------------------------------------------------------------------
+init_score:
+    push    hl                      ; save registers.
+    push    bc
+    ld      hl,score                ; HL: score
+    ld      b,NB_SCORE_DIGITS       ; B: number of digits
+init_score_loop:
+    ld      (hl),_0V                ; digit score = 0
+    inc     hl                      ; next digit
+    djnz    init_score_loop         ; while --b != 0
+    pop     bc
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Is game finished?
+; Return:
+; A: 1 (yes), 0 (no).
+; -------------------------------------------------------------------
+is_game_finished:
+    ld      a,(chances)
+    cp      0                       ; no more chances?
+    jr      z,is_game_finished_ret1
+    ld      a,(max_score)           ; max score achieved?
+    cp      1
+    jr      z,is_game_finished_ret1
+    ld      a,0                     ; A = false
+    ret
+is_game_finished_ret1:
+    ld      a,10                    ; flash 10 times.
+    call    flash_display
+    ld      a,1                     ; A = true
+    ret
+
+; -------------------------------------------------------------------
+; Display the background, 24 lines of 32 bytes (+HALT)
+; Warning: the display's memory has 33 bytes per line.
+; -------------------------------------------------------------------
+display_background:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    ld      de,(D_FILE)             ; DE=DFILE, i.e. the display memory
+    ld      hl,background           ; HL = address of the background to display
+    ld      a,24                    ; 24 lines
+display_background_loop1:
+    ld      bc,32                   ; 32 bytes per line
+    inc     hl                      ; skip 00
+    inc     de                      ; skip HALT
+    ldir                            ; copy data from HL to DE
+    dec     a                       ; next line
+    jr      nz,display_background_loop1
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Display the score
+; -------------------------------------------------------------------
+display_score:
+    push    hl                      ; save registers.
+    push    bc
+    push    de
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    ld      de,SCORE_OFFSET         ; relative position of the score
+    add     hl,de                   ; HL=position of the score
+    ex      de,hl                   ; HL <-> DE
+    ld      hl,score                ; HL=address of the score
+    ld      b,0                     ; B=0
+    ld      c,NB_SCORE_DIGITS       ; C=number of digits
+    ldir                            ; copy the digit into display memory
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Display Marius on the screen
+; -------------------------------------------------------------------
+display_marius:
+    push    af                      ; save registers.
+    push    hl
+    push    de
+    ld      a,(marius_position)     ; current position of Marius
+    ld      hl,offsets_marius       ; relative positions of Marius
+    ld      de,shape_marius         ; shape of Marius (characters)
+    call    display_brother         ; display Marius
+    pop     de                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Display Louis on the screen
+; -------------------------------------------------------------------
+display_louis:
+    push    af                      ; save registers.
+    push    hl
+    push    de
+    ld      a,(louis_position)      ; current position of Louis
+    ld      hl,offsets_louis        ; relative positions of Marius
+    ld      de,shape_louis          ; shape of Louis (characters)
+    call    display_brother         ; display Louis
+    pop     de                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Display the shape of a brother (3x3)
+; A: index in the array of positions (starting at 0).
+; HL: address of the array of relative positions (16 bits).
+; DE: address of the array of shapes.
+; -------------------------------------------------------------------
+display_brother:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    ld      b,d
+    ld      c,e
+    call    get_address_in_display  ; HL = address in DFILE, DE = relative position
+    push    hl
+    ld      h,b
+    ld      l,c                     ; HL = address of the array of shapes
+    call    get_brother_shape       ; HL = address of shape (source)
+    pop     de                      ; DE = address in DFILE (destination)
+    ld      a,3                     ; 3 lines
+display_brother_loop:
+    ld      bc,3                    ; 3 columns
+    ldir                            ; copy source to destination
+    ld      bc,30                   ; BC = 30 (33 bytes per line - 3)
+    ex      de,hl                   ; HL = address in DFILE (destination), DE = address of shape (source)
+    add     hl,bc                   ; HL = next line
+    ex      de,hl                   ; DE = address in DFILE (destination), HL = address of shape (source)
+    dec     a                       ; decrement line counter
+    jr      nz,display_brother_loop ; loop lines
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Erase Marius with the background
+; -------------------------------------------------------------------
+erase_marius:
+    push    af                      ; save registers.
+    push    hl
+    ld      a,(marius_position)     ; Position (index) of Marius
+    ld      hl,offsets_marius       ; relative positions of Marius on the screen
+    call    erase_brother           ; erase Marius
+    pop     hl                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Erase Louis with the background
+; -------------------------------------------------------------------
+erase_louis:
+    push    af                      ; save registers.
+    push    hl
+    ld      a,(louis_position)      ; Position (index) of Louis
+    ld      hl,offsets_louis        ; relative positions of Louis on the screen
+    call    erase_brother           ; erase Louis
+    pop     hl                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Erase a brother with the background
+; A: position
+; HL: address of the arrays of offsets 
+; -------------------------------------------------------------------
+erase_brother:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    call    get_address_in_display  ; HL = address in DFILE, DE = relative offset
+    ld      b,h
+    ld      c,l                     ; BC = address in DFILE
+    ld      hl,background           ; HL = address of background
+    add     hl,de                   ; HL = address in background
+    ld      d,b                     ; DE = address in DFILE
+    ld      e,c
+    ld      a,3                     ; 3 lines
+erase_brother_loop:
+    ld      bc,3                    ; 3 columns
+    ldir                            ; copy source to destination
+    ld      bc,30                   ; BC = 30 (33 bytes per line - 3)
+    add     hl,bc                   ; HL = next line in background
+    ex      de,hl
+    add     hl,bc                   ; HL = next line in FDILE
+    ex      de,hl
+    dec     a
+    jr      nz,erase_brother_loop   ; loop lines
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Get absolute and relative position in the display from an
+; array of relative positions (16 bits) and an index.
+; A: index in the array of positions (starting at 0).
+; HL: address of the array of relative positions (16 bits).
+; Return:
+; HL: absolute position (in the display)
+; DE: relative position (from the beginning of the display)
+; -------------------------------------------------------------------
+get_address_in_display:
+    push    af                      ; save registers.
+    sla     a                       ; A = A * 2
+    ld      e,a
+    ld      d,0                     ; DE = A
+    add     hl,de                   ; Address of the relative position
+    ld      e,(hl)                  ; low byte
+    inc     hl                      ; next byte
+    ld      d,(hl)                  ; high byte, DE = relative position
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    add     hl,de                   ; HL = absolute position
+    pop     af                      ; restore registers
+    ret
+
+; -------------------------------------------------------------------
+; Get the shape of a brother from its position
+; A: position of the brother
+; HL: array of shapes (3x3)
+; Result:
+; HL: address of the shape
+; -------------------------------------------------------------------
+get_brother_shape:
+    push    af                      ; save registers.
+    push    bc
+    ld      c,a                     ; C=A
+    sla     a
+    sla     a
+    sla     a
+    add     c                       ; A = A * 9
+    ld      b,0
+    ld      c,a
+    add     hl,bc                   ; HL = shape
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; ZX81 Keyboard Matrix
+; Port   Line     0    1    2    3    4
+; ------------------------------------------
+; FEFEh  A8     SHIFT  Z    X    C    V
+; FDFEh  A9       A    S    D    F    G
+; FBFEh  A10      Q    W    E    R    T
+; F7FEh  A11      1    2    3    4    5
+; EFFEh  A12      0    9    8    7    6
+; DFFEh  A13      P    O    I    U    Y
+; BFFEh  A14    ENTER  L    K    J    H
+; 7FFEh  A15     SPC   .    M    N    B
+; -------------------------------------------------------------------
+
+; -------------------------------------------------------------------
+; Test the keys and take the corresponding action
+; Result:
+; A: 0 = exit game, 1 = continue
+test_keyboard:
+    push    hl                      ; save registers.
+    push    bc
+    push    de
+    ld      b,$fb                   ; keyboard line 2 (A10)
+    ld      d,$01                   ; Q down (bit 0)?
+    ld      e,$01                   ; bit 0 of last_moves
+    ld      hl,marius_up            ; Action = move Marius up
+    call    test_key_do             ; Test key and execute action
+    ld      b,$fd                   ; keyboard line 1 (A9)
+    ld      d,$01                   ; A down (bit 0)?
+    ld      e,$02                   ; bit 1 of last_moves
+    ld      hl,marius_down          ; Action = move Marius down
+    call    test_key_do             ; Test key and execute action
+    ld      b,$df                   ; keyboard line 5 (A13)
+    ld      d,$01                   ; P down (bit 0)?
+    ld      e,$04                   ; bit 2 of last_moves
+    ld      hl,louis_up             ; Action = move Louis up
+    call    test_key_do             ; Test key and execute action
+    ld      b,$bf                   ; keyboard line 6 (A14)
+    ld      d,$02                   ; L down (bit 1)?
+    ld      e,$08                   ; bit 3 of last_moves
+    ld      hl,louis_down           ; Action = move Louis down
+    call    test_key_do             ; Test key and execute action
+    ld      b,$bf                   ; keyboard line 6 (A14)
+    ld      d,$08                   ; J down (bit 3)?
+    call    test_key                ; Test key
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Test if a key is pressed
+; B: the line of the key
+; D: the column of the key
+; Return:
+; A: 1 (pressed), 0 (not pressed)
+; -------------------------------------------------------------------
+test_key:
+    push    bc                      ; save registers.
+    push    de
+    ld      c,$fe                   ; for keyboard.
+    in      a,(c)                   ; read input port.
+    and     d                       ; key down?
+    jr      nz,test_key_ret0        ; no, return 0.            
+    ld      a,1                     ; return 1.
+test_key_ret:
+    pop     de                      ; restore registers
+    pop     bc
+    ret
+test_key_ret0:
+    ld      a,0                     ; return 0.
+    jr      test_key_ret
+
+; -------------------------------------------------------------------
+; Test if a key is pressed and was not previously pressed and
+; call a subroutine to move a brother.
+; B: the line of the key
+; D: the column of the key
+; E: the bit in last_moves used for this key
+; HL: the adress of the subroutine to call
+; -------------------------------------------------------------------
+test_key_do:
+    push    hl                      ; save registers.
+    push    bc
+    push    de
+    ld      c,$fe                   ; for keyboard.
+    in      a,(c)                   ; read input port.
+    and     d                       ; key down?
+    jr      nz,test_key_move_reset  ; key down so reset last_moves' bit
+    ld      a,(last_moves)          ; last moves.
+    ld      d,a                     ; D = last moves
+    and     e                       ; keep only the relevant bit.
+    jr      nz,test_key_move_ret    ; if bit is set, return.
+    ld      a,d                     ; A = last moves
+    or      e                       ; set relevant bit.
+    ld      (last_moves),a          ; store the updated last_moves.
+    ld      de,test_key_move_ret    ; DE = return address
+    push    de                      ; push return address (simulate call)
+    jp      (hl)                    ; simulate call (hl)
+test_key_move_ret: 
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    ret
+test_key_move_reset:
+    ld      d,$FF
+    ld      a,e                     ; A = the bit in last_moves used for this key
+    xor     d                       ; A = inverted bit
+    ld      d,a                     ; D = inverted bit
+    ld      a,(last_moves)          ; A = last_moves
+    and     d                       ; reset the bit
+    ld      (last_moves),a          ; store the updated last_moves.
+    jr      test_key_move_ret
+
+; -------------------------------------------------------------------
+; Move Marius up (if it is possible)
+; -------------------------------------------------------------------
+marius_up:
+    push    af                      ; save registers.
+    ld      a,(marius_position)     ; position of Marius
+    cp      2                       ; maximum position?
+    jr      z,marius_up_ret         ; yes, return
+    call    erase_marius            ; erase Marius with the background
+    inc     a                       ; up
+    ld      (marius_position),a     ; save updated position
+    call    display_marius          ; display Marius
+marius_up_ret:
+    pop     af                      ; restore registers
+    ret
+
+; -------------------------------------------------------------------
+; Move Marius down (if it is possible)
+; -------------------------------------------------------------------
+marius_down:
+    push    af
+    ld      a,(marius_position)     ; position of Marius
+    cp      0                       ; minimum position?
+    jr      z,marius_down_ret       ; yes, return
+    call    erase_marius            ; erase Marius with the background
+    dec     a                       ; down
+    ld      (marius_position),a     ; save updated position
+    call    display_marius          ; display Marius
+marius_down_ret:
+    pop     af                      ; restore registers
+    ret
+
+; -------------------------------------------------------------------
+; Move Louis up (if it is possible)
+; -------------------------------------------------------------------
+louis_up:
+    push    af                      ; save registers.
+    ld      a,(louis_position)      ; position of Marius
+    cp      2                       ; maximum position?
+    jr      z,louis_up_ret          ; yes, return
+    call    erase_louis             ; erase Marius with the background
+    inc     a                       ; up
+    ld      (louis_position),a      ; save updated position
+    call    display_louis           ; display Marius
+louis_up_ret:
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Move Louis down (if it is possible)
+; -------------------------------------------------------------------
+louis_down:
+    push    af                      ; save registers.
+    ld      a,(louis_position)      ; position of Marius
+    cp      0                       ; minimum position?
+    jr      z , louis_down_ret      ; yes, return
+    call    erase_louis             ; erase Marius with the background
+    dec     a                       ; down
+    ld      (louis_position),a      ; save updated position
+    call    display_louis           ; display Marius
+louis_down_ret:
+    pop     af                      ; restore registers
+    ret
+
+; -------------------------------------------------------------------
+; A step of the game: move each box by one position after some time
+; -------------------------------------------------------------------
+step:
+    push    af                      ; save registers.
+    call    step_time_elapsed       ; time elapsed for a step=
+    cp      1
+    jr      nz,step_ret             ; No so return
+    call    check_boxes_fall        ; A box fall?
+    cp      1
+    jr      z,step_ret              ; No, return
+    call    display_marius          ; In case he is in "move box" state
+    call    display_louis           ; In case he is in "move box" state
+    call    step_boxes              ; Move boxes
+    call    increase_speed          ; Increase the speed
+step_ret:
+    pop     af                      ; restore registers
+    ret
+
+; -------------------------------------------------------------------
+; Enough time has elapsed for a step?
+; Return:
+; A: 0 (no), 1 (yes)
+; -------------------------------------------------------------------
+step_time_elapsed:
+    push    hl                      ; save registers.
+    push    de
+    ld      hl,(last_frames)        ; previous value of FRAMES
+    ld      de,(FRAMES)             ; DE = FRAMES
+    or      a                       ; to reset the carry flag
+    sbc     hl,de                   ; HL = FRAMES - previous value of FRAMES
+    ld      a,(speed)               ; A = speed
+    ld      e,a
+    ld      d,0                     ; DE = speed
+    or      a                       ; to reset the carry flag
+    sbc     hl,de                   ; there is no 16-bits cp, so use sbc
+    jp      m,step_time_elapsed_ret0 ; if (FRAMES - previous FRAMES) < speed
+    ld      hl,(FRAMES)             ; HL=DFILE, i.e. the display memory
+    ld      (last_frames),hl        ; update previous value of FRAMES
+    ld      a,1
+step_time_elapsed_ret:
+    pop     de                      ; restore registers
+    pop     hl
+    ret
+step_time_elapsed_ret0:
+    ld      a,0
+    jr      step_time_elapsed_ret
+
+; -------------------------------------------------------------------
+; Increase the speed (in fact, decrement the speed counter) up to a 
+; maximal speed. This increase is every speed_delay steps
+; -------------------------------------------------------------------
+increase_speed:
+    push    af                      ; save registers.
+    push    bc
+    ld      a,(speed)               ; A = speed
+    cp      MAXIMAL_SPEED           ; compare to maximal speed
+    jr      z,increase_speed_ret    ; same? return
+    ld      c,a                     ; C = speed
+    ld      a,(speed_steps)         ; A = number of steps before increasing speed
+    dec     a                       ; A -= 1
+    ld      (speed_steps),a         ; update number of steps before increasing speed
+    cp      0                       ; is it 0?
+    jr      nz,increase_speed_ret   ; No? return
+    ld      a,SPEED_STEPS
+    ld      (speed_steps),a         ; reset number of steps before increasing speed
+    ld      a,c
+    ld      c,SPEED_INCREMENT
+    sub     c                       ; cecrease de speed counter by SPEED_INCREMENT
+    ld      (speed),a               ; update the speed
+increase_speed_ret:
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Move boxes one step
+; -------------------------------------------------------------------
+step_boxes:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    ld      a,(nb_boxes)            ; B = nb boxes
+    ld      b,0
+    ld      c,a                     ; BC = index of the box
+    ld      hl,boxes_positions-1
+    add     hl,bc                   ; HL = pointer to position of the box
+    ld      b,c
+step_boxes_loop:
+    ld      a,(hl)                  ; position of box
+    cp      $32                     ; last position?
+    jr      nz,step_boxes_skip1     ; No? skip following code
+    call    erase_box               ; erase the box
+    ld      (hl),$FF                ; position of the box = empty
+    call    increment_truck_boxes   ; increment the number on the truck
+    cp      1                       ; Continue?
+    jr      z,step_boxes_ret        ; No? return
+    jr      step_boxes_next_box
+step_boxes_skip1:
+    cp      $FF                     ; position is empty?
+    jr      z,step_boxes_emit       ; Yes? emit a new box
+step_boxes_move_box:
+    call    move_box                ; move the box
+step_boxes_next_box:
+    dec     hl                      ; next box (reverse order)
+    djnz    step_boxes_loop
+step_boxes_ret:
+    pop     bc                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+step_boxes_emit:
+    ld      a,b                     ; A = index of the box
+    call    emit_box                ; emit a new box
+    jr      step_boxes_next_box
+
+; -------------------------------------------------------------------
+; Move a box
+; HL: pointer to position of the box
+; -------------------------------------------------------------------
+move_box:
+    push    af                      ; save registers.
+    push    hl
+    ld      a,(hl)
+    call    erase_box               ; erase with the background
+    inc     a                       ; increment the position
+    ld      (hl),a                  ; update the position
+    call    draw_box                ; draw the shape of the box
+    pop     hl                      ; restore registers
+    pop     af
+    ret
+ 
+; -------------------------------------------------------------------
+; Emit a new box if there is no box in the first two positions and
+; depending of a pseudo-random value.
+; A: index of the box to emit.
+; Result:
+; A: 1 if box emitted, 0 otherwise
+; -------------------------------------------------------------------
+emit_box:
+    push    af                      ; save registers.
+    push    hl
+    push    de
+    ld      d,0
+    ld      e,a                     ; DE = position (index) of the box to emit
+    ld      a,0                     ; A = position 0
+    call    are_boxes_in_position   ; Is there a box at position 0?
+    cp      1
+    jr      z,emit_box_ret          ; Yes? retun
+    ld      a,1                     ; A = position 1
+    call    are_boxes_in_position   ; Is there a box at position 1?
+    cp      1
+    jr      z,emit_box_ret          ; Yes? retun
+    ld      a,(FRAMES)              ; some kind of (poor) randomness
+    ld      l,a
+    ld      h,$00
+    ld      a,(hl)                  ; get (somewhat random) byte from ROM
+    and     $03                     ; only 2 bits
+    cp      $02                     ; is it equal to 02?
+    jr      nz,emit_box_ret         ; No? return
+    ld      hl,boxes_positions-1    ; HL=pointer before position of the boxes
+    add     hl,de                   ; HL=pointer on the position of the box to emit 
+    ld      (hl),0                  ; position of the box = 0
+    ld      a,0
+    call    draw_box                ; draw the box at position 0
+emit_box_ret:
+    pop     de                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Test if there is a box in this position.
+; A: position to test
+; Result:
+; A: 1 (there is a box), 0 (no box)
+; -------------------------------------------------------------------
+are_boxes_in_position:
+    push    bc                      ; save registers.
+    ld      b,a                     ; B = position of the box to test
+    ld      a,(nb_boxes)            ; A = number of boxes
+    ld      c,a                     ; C = number of boxes
+    ld      a,b                     ; A = position of the box to test
+    ld      b,0                     ; BC = number of boxes
+    ld      hl,boxes_positions      ; HL = positions of boxes
+    cpir                            ; Search a box with position A
+    jr      nz,are_boxes_in_position_ret0
+    ld      a,1                     ; found, return 1
+are_boxes_in_position_ret:
+    pop     bc                      ; restore registers
+    ret
+are_boxes_in_position_ret0:
+    ld      a,0                     ; not found, return 0
+    jr      are_boxes_in_position_ret
+
+; -------------------------------------------------------------------
+; Erase a box.
+; A: position of the box.
+; -------------------------------------------------------------------
+erase_box:
+    push    hl                      ; save registers.
+    push    bc
+    push    de
+    ld      hl,offsets_boxes        ; relative positions of boxes in the display
+    call    get_address_in_display  ; HL = address in DFILE, DE = relative position
+    ld      b,h
+    ld      c,l                     ; BC = address in DFILE
+    ld      hl,background           ; HL = address of the background
+    add     hl,de                   ; HL = adress of the box in the background
+    ld      d,b
+    ld      e,c                     ; DE = address in DFILE
+    ldi                             ; copy the background into the display
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Draw a box.
+; A: position of the box.
+; -------------------------------------------------------------------
+draw_box:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    ld      hl,offsets_boxes
+    call    get_address_in_display  ; HL = address in DFILE, DE = relative position
+    ld      d,h
+    ld      e,l                     ; DE = address in DFILE
+    ld      hl,shape_boxes          ; HL = address of the shapes of boxes
+    ld      b,0
+    ld      c,a                     ; BC = position of the box
+    add     hl,bc                   ; HL = address of the box in the display
+    ldi                             ; copy the shape of the box into the display
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Increment the number of boxes in the truck.
+; If the maximum number is reached, animate de truck.
+; Return:
+; A: 1 (reset), 0 (continue)
+; -------------------------------------------------------------------
+increment_truck_boxes:
+    push    af                      ; save registers.
+    push    hl
+    push    de
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    ld      de,TRUCK_BOXES_OFFSET   ; DE = position of the number of boxes in the truck
+    add     hl,de                   ; HL = address in the display of this number of boxes
+    inc     (hl)                    ; increment the number of boxes in the truck
+    ld      a,(hl)                  ; A = new number of boxes in the truck
+    cp      _9                      ;  9 boxes
+    jr      nz,increment_truck_boxes_ret ; No, return
+    call    truck_full              ; Truck is full
+    ld      a,1                     ; return 1
+increment_truck_boxes_ret:
+    pop     de                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+increment_truck_boxes_ret0:
+    ld      a,0                     ; return 0
+    jr      increment_truck_boxes_ret
+
+truck_full:
+    push    af                      ; save registers.
+    call    animate_truck_boxes     ; animate the number of boxes
+    ld      a,20*1                  ; A = 1 second (20 frames)
+    call    delay                   ; delay of 1 sec
+    call    animate_truck           ; animate the truck
+    ld      a,TRUCK_POINTS          ; number of points to add
+    call    animate_score           ; animate the increment of the score
+    call    reset_speed             ; reset the speed
+    pop     af                      ; restore registers
+    ret
+
+; -------------------------------------------------------------------
+; Animate number of boxes on the truck
+; -------------------------------------------------------------------
+animate_truck_boxes:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    ld      bc,TRUCK_BOXES_OFFSET   ; BC = position of the number of boxes in the truck
+    add     hl,bc                   ; HL = address in the display of this number of boxes
+    ld      b,12                    ; 12 times
+animate_truck_boxes_loop:
+    ld      a,(hl)                  ; A = number of boxes as a character
+    xor     $80                     ; invert the character
+    ld      (hl),a                  ; display the inverted character
+    ld      a,20/2                  ; A = 1/2 second
+    call    delay                   ; delay of 0.5 sec
+    djnz    animate_truck_boxes_loop ; loop
+    pop     bc                      ; restore registers
+    pop     hl
+    pop     af
+
+; -------------------------------------------------------------------
+; Animate the truck
+; -------------------------------------------------------------------
+animate_truck:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    ld      b,TRUCK_COLS            ; number of columns to display the truck
+animate_truck_loop2:
+    push    bc                      ; save BC (number of columns to diaplay the truck)
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    ld      bc,TRUCK_OFFSET         ; BC = relative position of the truck in the display
+    add     hl,bc                   ; HL = address of the truck in the display
+    ld      a,TRUCK_ROWS            ; A = number of rows of the truck
+animate_truck_loop:
+    ld      d,h
+    ld      e,l                     ; DE = address of the truck in the display
+    ld      bc,1
+    add     hl,bc                   ; HL = address of the truck in the display + 1
+    ld      bc,TRUCK_COLS-1         ; BC = number of columns to display the truck - 1
+    ldir                            ; copy (with a left shift) of a line of the truck
+    push    af                      ; save A (nuumber of lines)
+    ld      a,_SPC                  ; A = space
+    ld      (de),a                  ; display a space at the end of the line
+    ld      bc,32-TRUCK_COLS+1      ; BC = offset of the next line of the truck
+    add     hl,bc                   ; HL = address of the next line of the truck
+    pop     af                      ; A = number of lines
+    dec     a                       ; A = number of lines - 1
+    jr      nz,animate_truck_loop   ; loop on the lines of the truck
+    ld      a,20/2                  ; A = 1/2 sec
+    call    delay                   ; delay of 0.5 sec
+    pop     bc                      ; BC = number of columns to diaplay the truck
+    djnz    animate_truck_loop2     ; loop on the number of steps of the animation
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Animate the increase of scrore
+; A: number of points to add to the score
+; -------------------------------------------------------------------
+animate_score:
+    push    af                      ; save registers.
+    push    bc
+    ld      b,a
+animate_score_loop:
+    call    increment_points        ; increment the score
+    ld      a,20/4
+    call    delay                   ; wait for 1/4 sec
+    djnz    animate_score_loop      ; loop on the number of points to add
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Reset the number of boxes in the truck
+; -------------------------------------------------------------------
+reset_truck_boxes:
+    push    hl                      ; save registers.
+    push    de
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    ld      de,TRUCK_BOXES_OFFSET   ; DE = position of the number of boxes in the truck
+    add     hl,de                   ; HL = address in the display of this number of boxes
+    ld      (hl),_0                 ; put '0'
+    pop     de                      ; restore registers
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Check if the brothers are in front of a box that will fall.
+; If it is the case, move the box.
+; -------------------------------------------------------------------
+brothers_move_boxes:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    ld      a,(nb_boxes)            ; A = number of boxes
+    ld      b,0
+    ld      c,a                     ; BC = number of boxes
+brothers_move_boxes_loop1:
+    ld      hl,boxes_positions-1
+    add     hl,bc                   ; HL = pointer to position of the box
+    ld      e,(hl)                  ; E = position of box
+    ld      a,$ff
+    cp      e                       ; is it empty?
+    jr      z,brothers_move_boxes_skip3 ; yes, skip the following code
+    ld      b,$03                   ; 3 positions per brother
+    ld      hl,fall_positions       ; HL = positions where boxes fall
+brothers_move_boxes_loop2:
+    ld      a,(hl)                  ; A = fall position
+    cp      e                       ; current position (E) = fall position (A) ?
+    jr      nz,brothers_move_boxes_skip1 ; no, skip some code
+    ld      a,(marius_position)     ; A = positin of Marius
+    inc     a                       ; A = positin of Marius + 1
+    cp      b                       ; Marius is in front of the box?
+    call    z,marius_move_box       ; yes, move box
+brothers_move_boxes_skip1:
+    inc     hl                      ; next fall position
+    ld      a,(hl)                  ; A = fall position
+    cp      e                       ; current position (E) = fall position (A) ?
+    jr      nz,brothers_move_boxes_skip2 ; no, skip some code
+    ld      a,(louis_position)      ; A = positin of Louis
+    inc     a                       ; A = positin of Louis + 1
+    cp      b                       ; Louis is in front of the box?
+    call    z,louis_move_box        ; yes, move box
+brothers_move_boxes_skip2:
+    inc     hl                      ; next fall position
+    djnz    brothers_move_boxes_loop2 ; inner loop (on fall positions)
+brothers_move_boxes_skip3:
+    dec     c                       ; next box (in reverse order)
+    jr      nz,brothers_move_boxes_loop1 ; outer loop (on boxes positions)
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Move the box in front of Marius
+; C: index of the box
+; -------------------------------------------------------------------
+marius_move_box:
+    push    af                      ; save registers.
+    push    bc
+    push    de
+    ld      a,(marius_position)     ; A = position (index) of Marius
+    ld      hl,offsets_marius       ; relative positions of Marius in the display
+    ld      de,shape_marius_move_box ; shape of Marius
+    call    brother_move_box        ; animate Marius moving the box
+    pop     de                      ; restore registers
+    pop     bc
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Move the box in front of Louis
+; C: index of the box
+; -------------------------------------------------------------------
+louis_move_box:
+    push    af                      ; save registers.
+    push    bc
+    push    de
+    ld      a,(louis_position)      ; A = position (index) of Louis
+    ld      hl,offsets_louis        ; relative positions of Louis in the display
+    ld      de,shape_louis_move_box ; shape of Louis
+    call    brother_move_box        ; animate Louis moving the box
+    pop     de                      ; restore registers
+    pop     bc
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Move the brother and the box in front of him.
+; A: position of brother
+; C: index of the box
+; HL: relative positions of brother in DFILE
+; DE: shape of brother
+; -------------------------------------------------------------------
+brother_move_box:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    call    display_brother         ; display the brother
+    ld      hl,boxes_positions-1
+    ld      b,0
+    add     hl,bc                   ; HL = address of the position of the box
+    call    move_box                ; move the box
+brother_move_box_points:
+    ld      a,(points_increment)    ; A = number of points to add
+    ld      b,a                     ; B = number of points to add
+    call    increment_points        ; increment the score
+    djnz    brother_move_box_points ; loop on the number of points to add
+    pop     bc                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Increment the score
+; -------------------------------------------------------------------
+increment_score:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    push    de
+    ld      b,NB_SCORE_DIGITS
+    ld      hl,score+NB_SCORE_DIGITS-1 ; HL = address of the last digit
+increment_score_loop:
+    inc     (hl)                    ; increment digit
+    ld      a,(hl)                  ; A = new digit
+    cp      _AV                     ; not equal to 'A'?
+    jr      nz,increment_score_ret  ; yes, return
+    ld      (hl),_0V                ; set digit to '0'
+    dec     hl                      ; previous digit
+    djnz    increment_score_loop    ; jump if there is a digit
+    ld      b,NB_SCORE_DIGITS
+    ld      hl,score+NB_SCORE_DIGITS-1 ; HL = address of the last digit
+increment_score_loop2:
+    ld      (hl),_ASK               ; put '*' instead of digit
+    dec     hl                      ; next digit
+    djnz    increment_score_loop2   ; loop on digits
+    ld      a,1                     ; set max score to true
+    ld      (max_score),a
+increment_score_ret:
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Invert the display
+; -------------------------------------------------------------------
+invert_display:
+    push    af                      ; save registers.
+    push    hl
+    push    bc
+    ld      hl,(D_FILE)             ; HL=DFILE, i.e. the display memory
+    ld      b,24                    ; 24 lines
+invert_display_loop2:
+    ld      c,b
+    ld      b,32                    ; 32 bytes per line
+    inc     hl                      ; skip HALT
+invert_display_loop1:
+    ld      a,(hl)                  ; A = diaplayed character
+    xor     $80                     ; A = inverted character
+    ld      (hl),a                  ; display the inverted character
+    inc     hl                      ; next character
+    djnz    invert_display_loop1    ; loop on the characters of the line
+    ld      b,c                     ; B = number of lines
+    djnz    invert_display_loop2    ; loop on the lines
+    pop     bc                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Flash the display
+; A: number of flashes
+; -------------------------------------------------------------------
+flash_display:
+    push    af                      ; save registers.
+    push    bc
+    sla     a                       ; A = number of flashes * 2
+    ld      b,a                     ; B = number of flashes * 2
+flash_display_loop:
+    call    invert_display          ; invert the display
+    ld      a,20/2
+    call    delay                   ; wait for 1/2 sec
+    djnz    flash_display_loop      ; loop on the number of flashes * 2
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Increment the score by the number of points increment
+; -------------------------------------------------------------------
+increment_points:
+    push    af                      ; save registers.
+    push    bc
+    ld      a,(points_increment)    ; number of points to add
+    ld      b,a                     ; B = number of points to add
+increment_points_loop:
+    call    increment_score         ; increment the score
+    djnz    increment_points_loop   ; loop on the number of points to add
+    call    check_score             ; check the score
+    call    display_score           ; display the new score
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Check score and:
+; - increment the number of boxes by 1 each 100 points
+; - multiply the number of points by 2 each 300 points
+; -------------------------------------------------------------------
+check_score:
+    push    af                      ; save registers.
+    push    bc
+    ld      a,(score)               ; first digit of score
+    ld      c,_0V-INITIAL_BOXES     ; number of boxes = INITIAL_BOXES + first digit
+    sub     c
+    ld      (nb_boxes),a            ; number of boxes = INITIAL_BOXES + first digit
+    ld      a,(score)               ; first digit of score
+    cp      _3V                     ; is '3'?
+    jr      z,check_score_bonus     ; yes, bonus
+    cp      _6V                     ; is '6'?
+    jr      z,check_score_bonus     ; yes, bonus
+    cp      _9V                     ; is '9'?
+    jr      z,check_score_bonus     ; yes, bonus
+check_score_ret:
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+check_score_bonus:
+    ld      a,(points_increment)    ; number of points to add
+    sla     a                       ; multiply by 2
+    ld      (points_increment),a    ; update number of points to add
+    jr      check_score_ret
+
+; -------------------------------------------------------------------
+; Check if a box falls
+; Return:
+; A: 1=box fall, 0=no fall
+; -------------------------------------------------------------------
+check_boxes_fall:
+    push    hl                      ; save registers.
+    push    bc
+    push    de
+    ld      a,(nb_boxes)
+    ld      b,0
+    ld      c,a                     ; BC = nb boxes
+check_boxes_fall_loop1:
+    ld      hl,boxes_positions-1
+    add     hl,bc                   ; HL points to box offset
+    ld      a,(hl)                  ; A = current position of box
+    ld      b,$06                   ; 6 fall positions
+    ld      hl,fall_positions
+check_box_fall_loop2:
+    ld      e,(hl)                  ; E = fall position
+    cp      e                       ; compare with position of the box (A)
+    jr      nz,check_boxes_fall_skip1 ; no, go to else part
+    call    flash_box               ; flash the fallen box
+    call    decrement_chances       ; decrement the remaining number of chances
+    call    reset_speed             ; reset the speed
+    ld      a,1                     ; return 1 (fall)
+    jr      check_boxes_fall_ret
+check_boxes_fall_skip1:
+    inc     hl                      ; next fall position
+    djnz    check_box_fall_loop2    ; loop on fall positions
+    dec     c                       ; nex box
+    jr      nz,check_boxes_fall_loop1 ; loop on boxes
+    ld      a,0                     ; return 0 (no fall)           
+check_boxes_fall_ret:
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Decrement the number of chances and display them.
+; -------------------------------------------------------------------
+decrement_chances:
+    push    af                      ; save registers.
+    ld      a,(chances)             ; A = number of chances
+    dec     a                       ; A = number of chances - 1
+    ld      (chances),a             ; update the number of chances
+    call    display_chances         ; display the new number of chances
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Display the number of chances remaining.
+; -------------------------------------------------------------------
+display_chances:
+    push    af                      ; save registers.
+    push    hl
+    push    de
+    ld      a,(chances)             ; A = number of chances
+    ld      hl,(D_FILE)             ; HL = DFILE, i.e. the display memory
+    ld      de,CHANCES_OFFSET       ; DE = relative position of chances in the display
+    add     hl,de                   ; HL = address of chances in the display
+    add     a,_0V                   ; A = number of chances as a character
+    ld      (hl),a                  ; display the number of chances
+    pop     de                      ; restore registers
+    pop     hl
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Wait during a delay
+; A: delay in frames (1 sec = 20 frames)
+; Note: FRAMES is updated by an interrupt
+; -------------------------------------------------------------------
+delay:
+    push    hl                      ; save registers.
+    push    bc
+    push    de
+    ld      hl,(FRAMES)             ; note: FRAMES is decrementing
+    ld      b,0
+    ld      c,a                     ; BC = number of frames to wait
+    or      a                       ; to reset the C flag
+    sbc     hl,bc                   ; HL = FRAMES - number of frames to wait
+    ex      de,hl                   ; DE = number of the frame to wait
+delay_loop:
+    ld      hl,(FRAMES)             ; HL = current number of frames
+    or      a                       ; to reset the carry flag
+    sbc     hl,de                   ; current frame > number of the frame to wait
+    jp      p,delay_loop            ; yes, continue to wait
+    pop     de                      ; restore registers
+    pop     bc
+    pop     hl
+    ret
+
+; -------------------------------------------------------------------
+; Flash the box that fall
+; A: position of the box
+; -------------------------------------------------------------------
+flash_box:
+    push    af                      ; save registers.
+    push    bc
+    ld      b,8                     ; 8 flashes
+    ld      c,a                     ; C = position of the box
+flash_box_loop:
+    call    erase_box               ; erase the box
+    ld      a,15
+    call    delay                   ; wait for 3/4 sec
+    ld      a,c
+    call    draw_box                ; display rthe box
+    ld      a,15
+    call    delay                   ; wait for 3/4 sec
+    ld      a,c
+    djnz    flash_box_loop          ; loop on the number of flashes
+    pop     bc                      ; restore registers
+    pop     af
+    ret
+
+; -------------------------------------------------------------------
+; Reset the game after a box fall or a full truck
+; -------------------------------------------------------------------
+reset_speed:
+    push    af                      ; save registers.
+    ld      a,$00
+    ld      (marius_position),a     ; reset the position of Marius (bottom)
+    ld      (louis_position),a      ; reset the position of Louis (bottom)
+    ld      a,(speed)
+    cp      MINIMAL_SPEED           ; minimal speed?
+    jp      p,reset_speed_skip1     ; yes, skip some code
+    ld      c,a                     ; C = speed
+    sla     c                       ; C = speed * 2
+    add     c                       ; A = speed * 3
+    srl     a                       ; A = speed * 1.5
+    ld      (speed),a               ; update the speed
+reset_speed_skip1:
+    ld      a,SPEED_STEPS
+    ld      (speed_steps),a         ; reset the number of steps before increasing the speed
+    ld      a,1
+    ld      (points_increment),a    ; reset the number of points to add
+    call    init_boxes              ; init position of boxes (to empty)
+    call    display_background      ; display the background of the game
+    call    display_score           ; display the score
+    call    display_chances         ; display the remaining chances
+    call    display_marius          ; display Marius
+    call    display_louis           ; display Luis
+    call    reset_truck_boxes       ; reset the number of boxes in the truck
+    ld      a,0                     ; Position 0
+    call    draw_box                ; Draw a box at position 0
+    ld      a,20*4
+    call    delay                   ; wait for 4 sec
+    pop     af                      ; restore registers
+    ret
+
+    include "variables.zx81"
+    include "read-only.zx81"

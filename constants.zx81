@@ -1,0 +1,47 @@
+; *******************************************************************
+; * FACTORY - A game for ZX81 computers
+; *******************************************************************
+; * File:			constants.zx81
+; * Description:    Constants
+; * Author:			Sebastien Andrivet
+; * License:		GPLv3
+; * Copyrights: 	Copyright (C) 1984-2023 Sebastien Andrivet
+; *******************************************************************
+
+
+; ===================================================================
+; Constants
+; ===================================================================
+
+; Number of boxes at the same time when starting the game
+INITIAL_BOXES           equ 4
+; Maximum number of boxes at the same time (4 + first score digit)
+MAX_BOXES               equ 9+INITIAL_BOXES
+; Number of chances when starting the game
+INITIAL_CHANCES         equ 4
+; Speed counter (low: fast) when starting the game (1 => 50ms)
+INITIAL_SPEED           equ 60      ; 3 sec
+; Maximal speed
+MAXIMAL_SPEED           equ 15      ; 0.75 sec
+; Minimal speed (have to be < 255/3 to avoid overflow)
+MINIMAL_SPEED           equ 84      ; 4.2 sec
+; Number of steps before increasing the speed
+SPEED_STEPS             equ 42
+; Increment for the speed
+SPEED_INCREMENT         equ 4       ; 200 ms
+; Relative position of the score on the display (D_FILE)
+SCORE_OFFSET            equ $02e3
+; Relative position of the chances on the display (D_FILE)
+CHANCES_OFFSET          equ $02f0
+; Number of digits of the score
+NB_SCORE_DIGITS         equ 3
+; Relative position of the truck on the display (D_FILE)
+TRUCK_OFFSET            equ 334
+; Relative position of the number of boxes inside the truck on the display (D_FILE)
+TRUCK_BOXES_OFFSET      equ 370
+; Number of columns of the truck
+TRUCK_COLS              equ 5
+; Number of rows of the truck
+TRUCK_ROWS              equ 5
+; Number of (base) points earned when the truck is full
+TRUCK_POINTS            equ 20

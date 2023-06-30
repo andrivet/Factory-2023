@@ -1,0 +1,62 @@
+; *******************************************************************
+; * FACTORY - A game for ZX81 computers
+; *******************************************************************
+; * File:           variables.zx81
+; * Description:    Variables
+; * Author:         Sebastien Andrivet
+; * License:        GPLv3
+; * Copyrights:     Copyright (C) 1984-2023 Sebastien Andrivet
+; *******************************************************************
+
+
+; Maximum number of boxes at the same time on the screen
+nb_boxes:
+    byte 0
+
+; Current speed of the game (the lowest, the fastest)
+speed:
+    byte 0
+
+; Number of steps before decrementing the speed counter
+speed_steps:
+    byte 0
+
+; Multiplier of points (1: normal, >1: bonus)
+points_increment:
+    byte 0
+
+; Last tick (based on FRAMES)
+last_frames:
+    word 0
+
+; Current score (in characters)
+score:
+    block NB_SCORE_DIGITS, _0
+
+; Max score reached?
+max_score:
+    byte 0
+
+; Number of chances
+chances:
+    byte 0
+
+; Current position of Marius (0: bottom, 2: top)
+marius_position:
+    byte 0
+
+; Current position of Louis (0: bottom, 2: top)
+louis_position:
+    byte 0
+
+; Position of the boxes (00: first position, FF: empty)
+boxes_positions:
+    block MAX_BOXES
+
+; Last movements
+; 00000001 0x01 Marius was moved up
+; 00000010 0x02 Marius was moved down
+; 00000100 0x04 Louis was moved up
+; 00001000 0x08 Louis was moved down
+last_moves:
+    byte 0
